@@ -49,6 +49,10 @@ log() {
   printf '==> %s\n' "$*"
 }
 
+trim() {
+  printf '%s' "$1" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+}
+
 run() {
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '+'
@@ -98,6 +102,64 @@ cleanup_dir_contents() {
 
 branch_exists() {
   git show-ref --verify --quiet "refs/heads/$1"
+}
+
+parse_available_models() {
+  sed -E '
+    s/\r$//
+    s/^[[:space:]]*[-*]?[[:space:]]*//
+    s/^[[:space:]]*[0-9]+[.)][[:space:]]*//
+    s/[[:space:]]+.*$//
+    /^[[:alnum:]_.\/:-]+$/!d
+    /^(Usage:|Options:|Commands:|No|Available|Model|Models)$/d
+  '
+}
+
+validate_models() {
+  local output
+  local model
+  local available_model
+  local found
+  local missing=()
+  local available_models=()
+
+  if ! output="$(cursor-agent --list-models 2>&1)"; then
+    printf '%s\n' "$output" >&2
+    die "failed to list cursor-agent models"
+  fi
+
+  while IFS= read -r available_model; do
+    [[ -n "$available_model" ]] || continue
+    available_models+=("$available_model")
+  done < <(printf '%s\n' "$output" | parse_available_models)
+
+  if [[ ${#available_models[@]} -eq 0 ]]; then
+    printf '%s\n' "$output" >&2
+    die "cursor-agent returned no available models"
+  fi
+
+  for model in "${MODELS[@]}"; do
+    found="0"
+    for available_model in "${available_models[@]}"; do
+      if [[ "$model" == "$available_model" ]]; then
+        found="1"
+        break
+      fi
+    done
+
+    if [[ "$found" != "1" ]]; then
+      missing+=("$model")
+    fi
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    printf 'Requested unavailable cursor-agent model(s): %s\n' "${missing[*]}" >&2
+    printf 'Available cursor-agent models:\n' >&2
+    printf '  %s\n' "${available_models[@]}" >&2
+    die "invalid --models list"
+  fi
+
+  log "validated cursor-agent models: ${MODELS[*]}"
 }
 
 sanitize_name() {
@@ -281,6 +343,13 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "must run inside a gi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 CURRENT_BRANCH="$(git branch --show-current)"
 IFS=',' read -r -a MODELS <<< "$MODELS_CSV"
+NORMALIZED_MODELS=()
+for model in "${MODELS[@]}"; do
+  model="$(trim "$model")"
+  [[ -n "$model" ]] || continue
+  NORMALIZED_MODELS+=("$model")
+done
+MODELS=("${NORMALIZED_MODELS[@]}")
 if [[ -n "$PROMPT_FILES_CSV" ]]; then
   IFS=',' read -r -a PROMPT_FILES <<< "$PROMPT_FILES_CSV"
 else
@@ -292,6 +361,7 @@ for prompt_file in "${PROMPT_FILES[@]}"; do
   [[ -f "$REPO_ROOT/$prompt_file" ]] || die "prompt file not found: $prompt_file"
 done
 
+validate_models
 ensure_clean_tree
 
 log "cursor-agent version: $(cursor-agent --version 2>/dev/null || printf 'unknown')"
@@ -318,9 +388,6 @@ else
 fi
 
 for model in "${MODELS[@]}"; do
-  model="$(printf '%s' "$model" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-  [[ -n "$model" ]] || continue
-
   safe_model="$(sanitize_name "$model")"
   branch="${PREFIX}-${safe_model}"
   workspace="$TMP_ROOT/workspace-$safe_model"
@@ -368,9 +435,6 @@ if [[ "$WITH_VERDICTS" == "1" ]]; then
   done
 
   for model in "${MODELS[@]}"; do
-    model="$(printf '%s' "$model" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-    [[ -n "$model" ]] || continue
-
     verdict_file="$(verdict_file_name "$model")"
     log "starting verdict for $model into $verdict_file"
     prompt="$(verdict_prompt "$model" "$verdict_file" "$branches_text")"
