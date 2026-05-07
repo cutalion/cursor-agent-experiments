@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  litellm:
+    environment:
+      - LITELLM_MASTER_KEY=sk-dev-key
+      - LITELLM_LOG=DEBUG
+    command: [ "--config", "/app/config.yaml", "--port", "4000", "--detailed_debug" ]
+
+  caddy:
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
