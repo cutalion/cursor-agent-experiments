@@ -1,0 +1,11 @@
+# Development — plain HTTP on :8080 inside the container (mapped to host 8080 by override).
+
+:8080 {
+	encode zstd gzip
+	reverse_proxy litellm:4000 {
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+}

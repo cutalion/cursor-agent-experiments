@@ -1,0 +1,45 @@
+# LiteLLM proxy configuration
+# Reference: https://docs.litellm.ai/docs/proxy/configs
+
+litellm_settings:
+  set_verbose: false
+  json_logs: true
+
+router_settings:
+  routing_strategy: least-busy
+
+model_list:
+  # --- OpenAI (set OPENAI_API_KEY in .env or remove these entries if unused) ---
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  # --- Anthropic (set ANTHROPIC_API_KEY) ---
+  - model_name: claude-3-5-sonnet-20241022
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # --- Groq (set GROQ_API_KEY) ---
+  - model_name: groq/llama-3.3-70b-versatile
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  # --- Ollama (add an `ollama` service to docker-compose and uncomment) ---
+  # - model_name: ollama/llama3
+  #   litellm_params:
+  #     model: ollama/llama3
+  #     api_base: http://ollama:11434
+
+# Optional hardening / UX (uncomment as needed):
+# general_settings:
+#   master_key: os.environ/LITELLM_MASTER_KEY  # usually inferred from env; explicit ok
+#   allowed_ips: ["10.0.0.0/8"]
+#   public_routes: ["health", "health/liveliness", "health/readiness"]

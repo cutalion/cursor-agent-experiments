@@ -1,0 +1,19 @@
+# Merged automatically when you run `docker compose up` (development defaults).
+# For production, deploy with only the base file, e.g.:
+#   docker compose -f docker-compose.yml up -d
+
+services:
+  litellm:
+    ports:
+      - "127.0.0.1:4000:4000"
+    environment:
+      # Relaxed dev default if .env omits the variable (override base ?required expansion in Dev)
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-change-me}
+
+  caddy:
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config

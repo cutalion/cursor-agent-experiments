@@ -1,0 +1,72 @@
+# Production-oriented base stack. For local development, keep docker-compose.override.yml
+# and run: docker compose up -d
+#
+# Production (override file absent): docker compose -f docker-compose.yml up -d
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:latest
+    container_name: litellm-proxy
+    restart: unless-stopped
+    command:
+      - "--config"
+      - "/app/config.yaml"
+      - "--port"
+      - "4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env (see .env.example)}
+      # Provider keys — add only what you use; LiteLLM ignores empty values for unused models
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_API_KEY: ${AZURE_API_KEY:-}
+      AZURE_API_BASE: ${AZURE_API_BASE:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Optional: comma-separated virtual keys (see LiteLLM "Budgets" / proxy keys docs)
+      LITELLM_API_KEYS: ${LITELLM_API_KEYS:-}
+    env_file:
+      - path: .env
+        required: false
+    networks:
+      - llm_net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness')"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: litellm-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-localhost}
+      CADDY_EMAIL: ${CADDY_EMAIL:-internal@localhost}
+    env_file:
+      - path: .env
+        required: false
+    networks:
+      - llm_net
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+networks:
+  llm_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,26 @@
+# Production Caddyfile — TLS via Let's Encrypt for public hostnames, or internal certs for `localhost`.
+# Set CADDY_DOMAIN and CADDY_EMAIL in `.env` (see .env.example).
+#
+# Optional edge basic auth: add inside the site block:
+#   basic_auth /* {
+#       alan $2a$14$Zkx19XLiW6VYouLFP5M5Q.xd20klZAGC.4eG7s29RWOLI/f7a0TxC
+#   }
+# Generate hash: docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+
+{
+	email {$CADDY_EMAIL}
+}
+
+{$CADDY_DOMAIN:localhost} {
+	encode zstd gzip
+	reverse_proxy litellm:4000 {
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+		health_uri /health/liveliness
+		health_interval 15s
+		health_timeout 5s
+		fail_duration 30s
+	}
+}
