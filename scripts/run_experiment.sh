@@ -19,6 +19,8 @@ Options:
   --plan FILE            Requirements plan file. Default: litellm_infra_plan.md.
   --prompt-files LIST    Comma-separated files to seed into /tmp. Default: plan file.
   --keep-tmp             Keep /tmp workspaces after the run for inspection.
+  --resume               Skip already completed implementations and verdicts.
+  --keep-going           Continue with the next model if one fails.
   --with-verdicts        Also generate one verdict file per model on the base branch.
   --force-agent          Pass --force to cursor-agent so shell commands are allowed.
   --dry-run              Print commands without running cursor-agent or git mutations.
@@ -264,9 +266,21 @@ Use git commands to inspect each branch. Compare the setups for:
 - maintainability
 
 Pick the best setup, rank the others, and explain the reasoning with concrete evidence from the branches.
-Write your final verdict to $verdict_file on the current branch.
+Write your final verdict to $verdict_file on the current branch. Do NOT commit the file, the wrapper script will commit it for you.
 PROMPT
 }
+
+cleanup() {
+  local exit_code=$?
+  if [[ -n "${import_worktree:-}" ]] && [[ -d "$import_worktree" ]]; then
+    git worktree remove --force "$import_worktree" 2>/dev/null || true
+  fi
+  if [[ "$exit_code" != 0 ]]; then
+    log "Experiment failed or was interrupted. You can resume later with --resume."
+  fi
+  exit "$exit_code"
+}
+trap cleanup EXIT
 
 MODELS_CSV=""
 BASE_BRANCH="main"
@@ -277,6 +291,8 @@ WITH_VERDICTS="0"
 FORCE_AGENT="0"
 DRY_RUN="0"
 KEEP_TMP="0"
+RESUME="0"
+KEEP_GOING="0"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -311,6 +327,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --keep-tmp)
       KEEP_TMP="1"
+      shift
+      ;;
+    --resume)
+      RESUME="1"
+      shift
+      ;;
+    --keep-going)
+      KEEP_GOING="1"
       shift
       ;;
     --force-agent)
@@ -397,17 +421,35 @@ for model in "${MODELS[@]}"; do
   log "starting implementation for $model in $workspace"
 
   if branch_exists "$branch"; then
-    die "branch already exists: $branch"
+    if [[ "$RESUME" == "1" ]]; then
+      log "branch $branch already exists, skipping implementation for $model"
+      continue
+    else
+      die "branch already exists: $branch (use --resume to skip)"
+    fi
   fi
 
   run mkdir -p "$workspace"
   copy_prompt_files "$workspace"
 
   prompt="$(implementation_prompt "$model" "$PROMPT_LIST")"
-  run "${AGENT_ARGS[@]}" --workspace "$workspace" --model "$model" "$prompt"
+  
+  if ! run "${AGENT_ARGS[@]}" --workspace "$workspace" --model "$model" "$prompt"; then
+    log "error: cursor-agent failed during implementation for $model"
+    if [[ "$KEEP_GOING" == "1" ]]; then
+      continue
+    else
+      die "cursor-agent failed"
+    fi
+  fi
 
   if [[ "$DRY_RUN" != "1" ]] && ! workspace_has_implementation_changes "$workspace"; then
-    die "cursor-agent produced no implementation changes for $model in $workspace"
+    log "error: cursor-agent produced no implementation changes for $model in $workspace"
+    if [[ "$KEEP_GOING" == "1" ]]; then
+      continue
+    else
+      die "no changes produced"
+    fi
   fi
 
   log "importing $workspace into orphan branch $branch"
@@ -418,7 +460,13 @@ for model in "${MODELS[@]}"; do
   copy_workspace_contents "$workspace" "$import_worktree"
 
   if [[ "$DRY_RUN" != "1" ]] && [[ -z "$(git -C "$import_worktree" status --porcelain)" ]]; then
-    die "nothing to commit after importing $workspace"
+    log "error: nothing to commit after importing $workspace"
+    run git worktree remove --force "$import_worktree"
+    if [[ "$KEEP_GOING" == "1" ]]; then
+      continue
+    else
+      die "nothing to commit"
+    fi
   fi
 
   run git -C "$import_worktree" add .
@@ -436,16 +484,37 @@ if [[ "$WITH_VERDICTS" == "1" ]]; then
 
   for model in "${MODELS[@]}"; do
     verdict_file="$(verdict_file_name "$model")"
+    
+    if [[ "$RESUME" == "1" ]] && [[ -f "$verdict_file" ]]; then
+      log "verdict file $verdict_file already exists, skipping verdict for $model"
+      continue
+    fi
+
     log "starting verdict for $model into $verdict_file"
     prompt="$(verdict_prompt "$model" "$verdict_file" "$branches_text")"
-    run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt"
+    
+    if ! run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt"; then
+      log "error: cursor-agent failed during verdict for $model"
+      if [[ "$KEEP_GOING" == "1" ]]; then
+        continue
+      else
+        die "cursor-agent failed"
+      fi
+    fi
 
     if [[ "$DRY_RUN" != "1" ]] && [[ ! -f "$verdict_file" ]]; then
-      die "cursor-agent did not create expected verdict file: $verdict_file"
+      log "error: cursor-agent did not create expected verdict file: $verdict_file"
+      if [[ "$KEEP_GOING" == "1" ]]; then
+        continue
+      else
+        die "missing verdict file"
+      fi
     fi
 
     run git add "$verdict_file"
-    run git commit -m "Add $model verdict"
+    if ! git diff --cached --quiet; then
+      run git commit -m "Add $model verdict"
+    fi
   done
 fi
 
