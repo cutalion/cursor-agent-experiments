@@ -1,0 +1,22 @@
+# Secrets / runtime
+.env
+.env.*
+!.env.example
+
+# Caddy local data when bind-mounted (we use named volumes, but just in case)
+caddy_data/
+caddy_config/
+
+# Postgres bind mount (if enabled)
+postgres_data/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,42 @@
+# Postgres overlay — adds a database for LiteLLM virtual keys, usage
+# tracking, budgets and the admin UI. Layer it onto the base stack:
+#   docker compose -f docker-compose.yml -f compose/postgres.yml up -d
+# (drop -f docker-compose.yml if you want the dev override too — just
+#  list both with their own -f flags in the order you want).
+#
+# After enabling, also uncomment `database_url:` in litellm-config.yaml
+# (or rely on the DATABASE_URL env var which LiteLLM reads automatically)
+# and set STORE_MODEL_IN_DB=True in .env if you want the Admin UI to
+# persist edits.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: litellm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-litellm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-litellm}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-litellm} -d ${POSTGRES_DB:-litellm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - gateway
+
+  litellm:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-True}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+
+volumes:
+  postgres_data:

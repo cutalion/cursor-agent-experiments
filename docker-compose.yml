@@ -1,0 +1,88 @@
+### Base (production-friendly) Compose file.
+### Development overrides live in `docker-compose.override.yml` and are loaded
+### automatically by `docker compose ...` when present. To run the stack
+### without the dev overrides (i.e. as a real production deploy), use:
+###   docker compose -f docker-compose.yml up -d
+### Optional overlays live in ./compose/*.yml — see README.md.
+
+name: litellm-gateway
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: litellm
+    restart: unless-stopped
+    expose:
+      - "4000"
+    # Note: in production the proxy is not published to the host — Caddy
+    # is the only public surface. The dev override re-publishes 4000 for
+    # direct access from the host.
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    env_file:
+      - .env
+    environment:
+      # These are read by litellm at runtime. Values come from .env;
+      # placing them here documents the contract and provides safe defaults.
+      LITELLM_MODE: ${LITELLM_MODE:-PRODUCTION}
+      LITELLM_LOG: ${LITELLM_LOG:-INFO}
+      STORE_MODEL_IN_DB: ${STORE_MODEL_IN_DB:-False}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging: *default-logging
+    networks:
+      - gateway
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      litellm:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-litellm.localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:-}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+    networks:
+      - gateway
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  gateway:
+    name: litellm-gateway
+    driver: bridge

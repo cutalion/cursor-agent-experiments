@@ -1,0 +1,53 @@
+# Production Caddyfile.
+# Caddy will obtain a real Let's Encrypt certificate for $DOMAIN as long
+# as the DNS A/AAAA record points at this host and ports 80/443 are open.
+#
+# Set DOMAIN and ACME_EMAIL in .env (or your deploy environment).
+#
+# To enable an extra gateway-level basic-auth prompt on top of LiteLLM's
+# own API-key auth, uncomment the `basic_auth` block below and set
+# BASIC_AUTH_USER + BASIC_AUTH_HASH in .env. Generate the hash with:
+#   ./scripts/caddy-hash.sh
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+
+	# Security headers — cheap insurance.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Public, unauthenticated liveness so external monitors can probe.
+	handle /health/liveliness {
+		reverse_proxy litellm:4000
+	}
+
+	# Optional: gateway-level basic-auth on top of LiteLLM API keys.
+	# Uncomment after setting BASIC_AUTH_USER / BASIC_AUTH_HASH in .env.
+	# basic_auth {
+	# 	{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	# }
+
+	reverse_proxy litellm:4000 {
+		# Streaming completions can run for minutes — be patient.
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+		# Pass real client IP for LiteLLM rate-limit logs.
+		header_up X-Forwarded-For {remote_host}
+	}
+}

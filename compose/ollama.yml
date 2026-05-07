@@ -1,0 +1,52 @@
+# Ollama overlay — adds a self-hosted Ollama instance to the gateway
+# network so you can serve open-weights models alongside cloud APIs.
+#
+#   docker compose -f docker-compose.yml -f compose/ollama.yml up -d
+#
+# After bring-up, pull a model into the container:
+#   docker exec -it ollama ollama pull llama3
+# Then uncomment the matching `ollama-llama3` block in litellm-config.yaml
+# and `docker compose restart litellm`.
+#
+# GPU users: uncomment the `deploy.resources.reservations.devices` block
+# below and ensure nvidia-container-toolkit is installed on the host.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    expose:
+      - "11434"
+    # Uncomment the next two lines to also publish on the host (handy
+    # for Ollama Desktop or local CLI tooling).
+    # ports:
+    #   - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-2}
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    networks:
+      - gateway
+
+  litellm:
+    depends_on:
+      ollama:
+        condition: service_started
+
+volumes:
+  ollama_data:
