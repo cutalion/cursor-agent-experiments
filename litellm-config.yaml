@@ -1,0 +1,76 @@
+# LiteLLM proxy configuration
+# Docs: https://docs.litellm.ai/docs/proxy/configs
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # read from env at runtime
+  # Uncomment to enable persistent virtual keys, spend tracking, etc.
+  # database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  # Global fallback strategy: try the next model in the list on failure
+  set_verbose: false
+  drop_params: true           # ignore unsupported params instead of erroring
+  request_timeout: 600        # seconds
+  num_retries: 2
+  # success_callback: ["langfuse"]   # add observability callbacks here
+
+router_settings:
+  routing_strategy: usage-based-routing-v2   # latency-based-routing | simple-shuffle
+  num_retries: 2
+  timeout: 600
+  retry_after: 5
+
+model_list:
+  # ── OpenAI ──────────────────────────────────────────────────────────────────
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: openai/gpt-3.5-turbo
+      api_key: os.environ/OPENAI_API_KEY
+
+  # ── Anthropic ────────────────────────────────────────────────────────────────
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-haiku
+    litellm_params:
+      model: anthropic/claude-3-haiku-20240307
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ── Groq ────────────────────────────────────────────────────────────────────
+  - model_name: llama-3-70b
+    litellm_params:
+      model: groq/llama3-70b-8192
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: mixtral-8x7b
+    litellm_params:
+      model: groq/mixtral-8x7b-32768
+      api_key: os.environ/GROQ_API_KEY
+
+  # ── Azure OpenAI (uncomment and fill in when needed) ────────────────────────
+  # - model_name: azure-gpt-4
+  #   litellm_params:
+  #     model: azure/gpt-4
+  #     api_key: os.environ/AZURE_API_KEY
+  #     api_base: os.environ/AZURE_API_BASE
+  #     api_version: os.environ/AZURE_API_VERSION
+
+  # ── Wildcard pass-through (last resort) ─────────────────────────────────────
+  # Any model name not matched above will be attempted directly via OpenAI.
+  # Remove if you want strict allow-listing.
+  - model_name: "*"
+    litellm_params:
+      model: openai/*
+      api_key: os.environ/OPENAI_API_KEY

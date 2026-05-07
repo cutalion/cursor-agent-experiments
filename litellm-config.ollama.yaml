@@ -1,0 +1,45 @@
+# LiteLLM config used when Ollama compose overlay is active.
+# Inherits all settings from the base config and adds local Ollama models.
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  set_verbose: false
+  drop_params: true
+  request_timeout: 600
+  num_retries: 2
+
+router_settings:
+  routing_strategy: usage-based-routing-v2
+  num_retries: 2
+  timeout: 600
+  retry_after: 5
+
+model_list:
+  # ── Local Ollama models ──────────────────────────────────────────────────────
+  - model_name: llama3
+    litellm_params:
+      model: ollama/llama3
+      api_base: http://ollama:11434
+
+  - model_name: mistral
+    litellm_params:
+      model: ollama/mistral
+      api_base: http://ollama:11434
+
+  - model_name: codellama
+    litellm_params:
+      model: ollama/codellama
+      api_base: http://ollama:11434
+
+  # ── Cloud fallbacks (add API keys to .env as needed) ────────────────────────
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY

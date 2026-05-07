@@ -1,0 +1,21 @@
+# Development overrides — automatically merged by Docker Compose.
+# Run: docker compose up
+version: "3.9"
+
+services:
+  litellm:
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-dev-master-key-change-me}
+      - LITELLM_LOG=DEBUG
+    # Mount config as read-write so you can edit without rebuilding
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+
+  caddy:
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile
+    environment:
+      - CADDY_DOMAIN=localhost

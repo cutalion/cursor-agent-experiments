@@ -1,0 +1,14 @@
+# Environment — contains secrets, never commit
+.env
+
+# Caddy data (TLS certs, ACME state)
+caddy_data/
+caddy_config/
+
+# Editor and OS artifacts
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

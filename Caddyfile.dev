@@ -1,0 +1,26 @@
+# Development Caddyfile — plain HTTP on port 8080, no TLS.
+# Used automatically by docker-compose.override.yml.
+
+{
+	# Disable HTTPS redirect in dev
+	auto_https off
+	admin off
+}
+
+:8080 {
+	# ── Basic proxy to LiteLLM ────────────────────────────────────────────────
+	reverse_proxy litellm:4000 {
+		header_up Host {upstream_hostport}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+
+		# Streaming support
+		flush_interval -1
+	}
+
+	# ── Human-readable access log in dev ─────────────────────────────────────
+	log {
+		output stdout
+		format console
+	}
+}
