@@ -1,0 +1,20 @@
+:80 {
+  encode zstd gzip
+
+  @preflight {
+    method OPTIONS
+  }
+  handle @preflight {
+    header Access-Control-Allow-Origin "*"
+    header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    header Access-Control-Allow-Headers "Authorization, Content-Type"
+    respond 204
+  }
+
+  # Keep this enabled for local team environments.
+  basicauth {
+    {$CADDY_BASICAUTH_USER} {$CADDY_BASICAUTH_HASH}
+  }
+
+  reverse_proxy litellm:4000
+}

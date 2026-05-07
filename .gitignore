@@ -1,0 +1,6 @@
+.env
+.env.local
+.DS_Store
+caddy_data/
+caddy_config/
+ollama_data/

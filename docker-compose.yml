@@ -1,0 +1,76 @@
+name: litellm-gateway
+
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4000/health/readiness"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - gateway
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on:
+      litellm:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway
+
+  # Optional local model provider.
+  # Enable with: docker compose --profile local-llm up -d
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    profiles: ["local-llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gateway
+
+networks:
+  gateway:
+    name: litellm-gateway
+
+volumes:
+  caddy_data:
+  caddy_config:
+  ollama_data:

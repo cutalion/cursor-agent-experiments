@@ -1,0 +1,29 @@
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: null
+  disable_spend_logs: false
+  infer_model_from_keys: true
+
+litellm_settings:
+  set_verbose: false
+  num_retries: 2
+  request_timeout: 45
+  drop_params: true
+
+router_settings:
+  routing_strategy: simple-shuffle
+  model_group_alias:
+    gpt-4o-mini: ["openai/gpt-4o-mini", "ollama/llama3"]
+  redis_host: null
+  redis_port: null
+
+model_list:
+  - model_name: openai/gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: ollama/llama3
+    litellm_params:
+      model: ollama/llama3
+      api_base: os.environ/OLLAMA_BASE_URL
