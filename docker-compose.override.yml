@@ -1,0 +1,23 @@
+services:
+  litellm:
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-change-me}
+      UI_USERNAME: ${LITELLM_UI_USERNAME:-admin}
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin}
+    ports:
+      - "127.0.0.1:${LITELLM_HOST_PORT:-4000}:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+
+  caddy:
+    environment:
+      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN:-:8080}
+      ACME_EMAIL: ${ACME_EMAIL:-dev@example.local}
+    ports:
+      - "127.0.0.1:${CADDY_DEV_PORT:-8080}:8080"
+    volumes:
+      - ./caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-litellm-dev-password}

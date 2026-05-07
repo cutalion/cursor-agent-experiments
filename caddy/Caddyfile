@@ -1,0 +1,30 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$GATEWAY_DOMAIN} {
+	encode gzip zstd
+
+	log {
+		output stdout
+		format console
+	}
+
+	@health path /health /health/* /_health
+	handle @health {
+		reverse_proxy litellm:4000
+	}
+
+	basicauth {
+		{$CADDY_BASIC_AUTH_USER} {$CADDY_BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy litellm:4000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 180s
+		}
+	}
+}

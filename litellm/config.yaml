@@ -1,0 +1,46 @@
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: llama3-local
+    litellm_params:
+      model: ollama/llama3.1
+      api_base: http://ollama:11434
+
+  - model_name: tgi-local
+    litellm_params:
+      model: huggingface/tgi
+      api_base: os.environ/TGI_API_BASE
+      api_key: os.environ/HUGGINGFACE_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  ui_access_mode: admin_only
+  alerting: []
+
+litellm_settings:
+  request_timeout: 180
+  num_retries: 2
+  drop_params: true
+  set_verbose: false
+  json_logs: true
+  success_callback: []
+  failure_callback: []
+
+router_settings:
+  routing_strategy: least-busy
+  redis_host: null
