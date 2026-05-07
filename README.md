@@ -2,7 +2,9 @@
 
 ## Overview
 
-This repository is a focused playground for running automated LiteLLM infrastructure experiments with `cursor-agent`.
+This repository is a focused playground for running automated LiteLLM infrastructure experiments with `cursor-agent`. The primary purpose of this repository is to conduct an experiment comparing different AI models' coding and evaluation capabilities when tasked with implementing a production-ready LiteLLM infrastructure stack.
+
+**🏆 [Read the Final Analysis & Results (RESULTS.md)](RESULTS.md)**
 
 It is intentionally minimal and keeps only:
 - `litellm_infra_plan.md` (requirements prompt)
