@@ -16,9 +16,13 @@ Options:
   --models LIST          Comma-separated cursor-agent model names to run.
   --base BRANCH          Base branch for all experiment branches. Default: main.
   --name NAME            Name of the experiment (required). Used as the directory name in experiments/.
-  --prefix PREFIX        Prefix for implementation branches. Default: exp.
+  --prefix PREFIX        Prefix for implementation branches. Default: experiment name.
   --task-prompt FILE     File containing the prompt template for the implementation task.
+                         Defaults to experiments/<name>/task_prompt.md if present,
+                         otherwise uses the built-in generic implementation prompt.
   --eval-prompt FILE     File containing the prompt template for the evaluation task.
+                         Defaults to experiments/<name>/eval_prompt.md if present,
+                         otherwise uses the built-in generic evaluation prompt.
   --plan FILE            Requirements plan file. Default: experiments/<name>/plan.md.
   --prompt-files LIST    Comma-separated files to seed into /tmp. Default: plan file.
   --keep-tmp             Keep /tmp workspaces after the run for inspection.
@@ -34,7 +38,7 @@ Environment:
 
 Examples:
   scripts/run_experiment.sh --models gpt-5,sonnet-4 --with-verdicts
-  scripts/run_experiment.sh --models sonnet-4 --prefix trial --dry-run
+  scripts/run_experiment.sh --name my-experiment --models sonnet-4 --dry-run
 
 Notes:
   Implementation agents run in /tmp workspaces seeded only with prompt files.
@@ -243,17 +247,17 @@ implementation_prompt() {
   fi
 
   cat <<PROMPT
-You are running a one-shot infrastructure implementation experiment for model "$model".
+You are running a one-shot coding implementation experiment for model "$model".
 
 You are in a fresh temporary workspace. The only seed files present are:
 $prompt_list
 
-Read the seed prompt/requirements files and implement the requested LiteLLM infrastructure from scratch in this workspace.
+Read the seed prompt/requirements files and implement the requested project from scratch in this workspace.
 
 Requirements:
-- Create all files needed for a production-friendly and development-friendly LiteLLM API gateway.
-- Use Docker Compose, Caddy, and LiteLLM as requested by the plan.
-- Include configuration, environment templates, documentation, and helper scripts where useful.
+- Create all files needed to satisfy the experiment specification.
+- Follow the required technology stack and constraints in the prompt files.
+- Include configuration, documentation, tests, and helper scripts where useful.
 - Do not inspect or copy files from any other repository or branch.
 - Keep the result self-contained in this workspace.
 
@@ -278,20 +282,20 @@ verdict_prompt() {
   fi
 
   cat <<PROMPT
-You are evaluating a LiteLLM infrastructure experiment as model "$model".
+You are evaluating a coding experiment as model "$model".
 
 The implementation branches are:
 $branches
 
-Use git commands to inspect each branch. Compare the setups for:
-- production readiness
-- security
+Use git commands to inspect each branch. Compare the implementations against the experiment specification, including:
+- functional completeness
+- correctness
+- test quality
 - documentation and onboarding
 - developer experience
-- modularity and extensibility
 - maintainability
 
-Pick the best setup, rank the others, and explain the reasoning with concrete evidence from the branches.
+Pick the best implementation, rank the others, and explain the reasoning with concrete evidence from the branches.
 Write your final verdict to $verdict_file on the current branch. Do NOT commit the file, the wrapper script will commit it for you.
 PROMPT
 }
@@ -311,7 +315,7 @@ trap cleanup EXIT
 MODELS_CSV=""
 EXP_NAME=""
 BASE_BRANCH="main"
-PREFIX="exp"
+PREFIX=""
 PLAN_FILE=""
 TASK_PROMPT_FILE=""
 EVAL_PROMPT_FILE=""
@@ -412,6 +416,15 @@ done
 EXP_DIR="experiments/$EXP_NAME"
 if [[ -z "$PLAN_FILE" ]]; then
   PLAN_FILE="$EXP_DIR/plan.md"
+fi
+if [[ -z "$PREFIX" ]]; then
+  PREFIX="$EXP_NAME"
+fi
+if [[ -z "$TASK_PROMPT_FILE" ]] && [[ -f "$EXP_DIR/task_prompt.md" ]]; then
+  TASK_PROMPT_FILE="$EXP_DIR/task_prompt.md"
+fi
+if [[ -z "$EVAL_PROMPT_FILE" ]] && [[ -f "$EXP_DIR/eval_prompt.md" ]]; then
+  EVAL_PROMPT_FILE="$EXP_DIR/eval_prompt.md"
 fi
 
 command -v git >/dev/null 2>&1 || die "git is required"
@@ -525,7 +538,7 @@ for model in "${MODELS[@]}"; do
   fi
 
   run git -C "$import_worktree" add .
-  run git -C "$import_worktree" commit -m "Add $model LiteLLM infra setup"
+  run git -C "$import_worktree" commit -m "Add $model $EXP_NAME implementation"
   run git worktree remove "$import_worktree"
 done
 

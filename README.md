@@ -5,6 +5,7 @@ This repository contains automated experiments comparing different AI models' co
 ## Experiments
 
 - [LiteLLM Infrastructure](experiments/litellm-infra/README.md): Models were tasked with implementing a production-ready LiteLLM API gateway infrastructure using Docker Compose and Caddy.
+- [Joke Arena](experiments/joke-arena/README.md): Models are tasked with implementing a Rails, SQLite, Hotwire, and RubyLLM web app for comparing generated jokes and maintaining a leaderboard.
 
 ## How to run an experiment
 
