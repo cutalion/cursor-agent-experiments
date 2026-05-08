@@ -16,6 +16,8 @@ Options:
   --models LIST          Comma-separated cursor-agent model names to run.
   --base BRANCH          Base branch for all experiment branches. Default: main.
   --prefix PREFIX        Prefix for implementation branches. Default: exp.
+  --task-prompt FILE     File containing the prompt template for the implementation task.
+  --eval-prompt FILE     File containing the prompt template for the evaluation task.
   --plan FILE            Requirements plan file. Default: litellm_infra_plan.md.
   --prompt-files LIST    Comma-separated files to seed into /tmp. Default: plan file.
   --keep-tmp             Keep /tmp workspaces after the run for inspection.
@@ -228,6 +230,17 @@ ensure_clean_tree() {
 implementation_prompt() {
   local model="$1"
   local prompt_list="$2"
+  
+  if [[ -n "$TASK_PROMPT_FILE" ]] && [[ -f "$REPO_ROOT/$TASK_PROMPT_FILE" ]]; then
+    # Read custom prompt and replace variables
+    local content
+    content="$(cat "$REPO_ROOT/$TASK_PROMPT_FILE")"
+    content="${content//\$model/$model}"
+    content="${content//\$prompt_list/$prompt_list}"
+    printf '%s\n' "$content"
+    return
+  fi
+
   cat <<PROMPT
 You are running a one-shot infrastructure implementation experiment for model "$model".
 
@@ -251,6 +264,18 @@ verdict_prompt() {
   local model="$1"
   local verdict_file="$2"
   local branches="$3"
+  
+  if [[ -n "$EVAL_PROMPT_FILE" ]] && [[ -f "$REPO_ROOT/$EVAL_PROMPT_FILE" ]]; then
+    # Read custom prompt and replace variables
+    local content
+    content="$(cat "$REPO_ROOT/$EVAL_PROMPT_FILE")"
+    content="${content//\$model/$model}"
+    content="${content//\$verdict_file/$verdict_file}"
+    content="${content//\$branches/$branches}"
+    printf '%s\n' "$content"
+    return
+  fi
+
   cat <<PROMPT
 You are evaluating a LiteLLM infrastructure experiment as model "$model".
 
@@ -286,6 +311,8 @@ MODELS_CSV=""
 BASE_BRANCH="main"
 PREFIX="exp"
 PLAN_FILE="litellm_infra_plan.md"
+TASK_PROMPT_FILE=""
+EVAL_PROMPT_FILE=""
 PROMPT_FILES_CSV=""
 WITH_VERDICTS="0"
 FORCE_AGENT="0"
@@ -309,6 +336,16 @@ while [[ $# -gt 0 ]]; do
     --prefix)
       [[ $# -ge 2 ]] || die "--prefix requires a value"
       PREFIX="$2"
+      shift 2
+      ;;
+    --task-prompt)
+      [[ $# -ge 2 ]] || die "--task-prompt requires a value"
+      TASK_PROMPT_FILE="$2"
+      shift 2
+      ;;
+    --eval-prompt)
+      [[ $# -ge 2 ]] || die "--eval-prompt requires a value"
+      EVAL_PROMPT_FILE="$2"
       shift 2
       ;;
     --plan)
@@ -434,8 +471,9 @@ for model in "${MODELS[@]}"; do
 
   prompt="$(implementation_prompt "$model" "$PROMPT_LIST")"
   
-  if ! run "${AGENT_ARGS[@]}" --workspace "$workspace" --model "$model" "$prompt"; then
+  if ! run "${AGENT_ARGS[@]}" --workspace "$workspace" --model "$model" "$prompt" > "$workspace/agent_implementation.log" 2>&1; then
     log "error: cursor-agent failed during implementation for $model"
+    cat "$workspace/agent_implementation.log"
     if [[ "$KEEP_GOING" == "1" ]]; then
       continue
     else
@@ -493,8 +531,15 @@ if [[ "$WITH_VERDICTS" == "1" ]]; then
     log "starting verdict for $model into $verdict_file"
     prompt="$(verdict_prompt "$model" "$verdict_file" "$branches_text")"
     
-    if ! run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt"; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+      printf '+ mkdir -p logs\n'
+    else
+      mkdir -p logs
+    fi
+    
+    if ! run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt" > "logs/${model}_verdict.log" 2>&1; then
       log "error: cursor-agent failed during verdict for $model"
+      cat "logs/${model}_verdict.log"
       if [[ "$KEEP_GOING" == "1" ]]; then
         continue
       else
