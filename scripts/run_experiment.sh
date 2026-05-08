@@ -15,10 +15,11 @@ Runs a LiteLLM infrastructure experiment with cursor-agent:
 Options:
   --models LIST          Comma-separated cursor-agent model names to run.
   --base BRANCH          Base branch for all experiment branches. Default: main.
+  --name NAME            Name of the experiment (required). Used as the directory name in experiments/.
   --prefix PREFIX        Prefix for implementation branches. Default: exp.
   --task-prompt FILE     File containing the prompt template for the implementation task.
   --eval-prompt FILE     File containing the prompt template for the evaluation task.
-  --plan FILE            Requirements plan file. Default: litellm_infra_plan.md.
+  --plan FILE            Requirements plan file. Default: experiments/<name>/plan.md.
   --prompt-files LIST    Comma-separated files to seed into /tmp. Default: plan file.
   --keep-tmp             Keep /tmp workspaces after the run for inspection.
   --resume               Skip already completed implementations and verdicts.
@@ -178,7 +179,7 @@ sanitize_name() {
 verdict_file_name() {
   local name="$1"
   name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g; s/^_+//; s/_+$//')"
-  printf '%s_verdict.md' "$name"
+  printf '%s/verdicts/%s_verdict.md' "$EXP_DIR" "$name"
 }
 
 has_changes() {
@@ -308,9 +309,10 @@ cleanup() {
 trap cleanup EXIT
 
 MODELS_CSV=""
+EXP_NAME=""
 BASE_BRANCH="main"
 PREFIX="exp"
-PLAN_FILE="litellm_infra_plan.md"
+PLAN_FILE=""
 TASK_PROMPT_FILE=""
 EVAL_PROMPT_FILE=""
 PROMPT_FILES_CSV=""
@@ -326,6 +328,11 @@ while [[ $# -gt 0 ]]; do
     --models)
       [[ $# -ge 2 ]] || die "--models requires a value"
       MODELS_CSV="$2"
+      shift 2
+      ;;
+    --name)
+      [[ $# -ge 2 ]] || die "--name requires a value"
+      EXP_NAME="$2"
       shift 2
       ;;
     --base)
@@ -396,6 +403,16 @@ done
   usage
   die "--models is required"
 }
+
+[[ -n "$EXP_NAME" ]] || {
+  usage
+  die "--name is required"
+}
+
+EXP_DIR="experiments/$EXP_NAME"
+if [[ -z "$PLAN_FILE" ]]; then
+  PLAN_FILE="$EXP_DIR/plan.md"
+fi
 
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v cursor-agent >/dev/null 2>&1 || die "cursor-agent is required"
@@ -532,14 +549,14 @@ if [[ "$WITH_VERDICTS" == "1" ]]; then
     prompt="$(verdict_prompt "$model" "$verdict_file" "$branches_text")"
     
     if [[ "$DRY_RUN" == "1" ]]; then
-      printf '+ mkdir -p logs\n'
+      printf '+ mkdir -p %q/logs %q/verdicts\n' "$EXP_DIR" "$EXP_DIR"
     else
-      mkdir -p logs
+      mkdir -p "$EXP_DIR/logs" "$EXP_DIR/verdicts"
     fi
     
-    if ! run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt" > "logs/${model}_verdict.log" 2>&1; then
+    if ! run "${AGENT_ARGS[@]}" --workspace "$REPO_ROOT" --model "$model" "$prompt" > "$EXP_DIR/logs/${model}_verdict.log" 2>&1; then
       log "error: cursor-agent failed during verdict for $model"
-      cat "logs/${model}_verdict.log"
+      cat "$EXP_DIR/logs/${model}_verdict.log"
       if [[ "$KEEP_GOING" == "1" ]]; then
         continue
       else
@@ -569,6 +586,37 @@ log "implementation branches: ${IMPLEMENTATION_BRANCHES[*]}"
 if [[ "$WITH_VERDICTS" == "1" ]]; then
   log "verdict files committed on $BASE_BRANCH"
 fi
+
+if [[ "$DRY_RUN" != "1" ]]; then
+  # Generate README.md for the experiment
+  cat <<EOF > "$EXP_DIR/README.md"
+# Experiment: $EXP_NAME
+
+## Run Configuration
+- **Models**: ${MODELS[*]}
+- **Base Branch**: $BASE_BRANCH
+- **Prefix**: $PREFIX
+- **Plan File**: $PLAN_FILE
+- **Task Prompt**: ${TASK_PROMPT_FILE:-default}
+- **Eval Prompt**: ${EVAL_PROMPT_FILE:-default}
+
+## Results
+- [Analysis Results](RESULTS.md)
+- [Verdicts](verdicts/)
+- [Logs](logs/)
+
+## Implementation Branches
+EOF
+  for branch in "${IMPLEMENTATION_BRANCHES[@]}"; do
+    echo "- \`$branch\`" >> "$EXP_DIR/README.md"
+  done
+  
+  run git add "$EXP_DIR/README.md"
+  if ! git diff --cached --quiet; then
+    run git commit -m "Add README for $EXP_NAME experiment"
+  fi
+fi
+
 if [[ "$KEEP_TMP" == "1" ]]; then
   log "kept temp root: $TMP_ROOT"
 else
